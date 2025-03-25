@@ -195,7 +195,7 @@ exports.completeOnboarding = async (req, res) => {
 
     await client.query('BEGIN');
 
-    // Update business profile with onboarding data
+    // Update business profile with onboarding data and preserve is_salesperson
     const result = await client.query(
       `UPDATE businesses 
        SET business_name = $1,
@@ -206,16 +206,20 @@ exports.completeOnboarding = async (req, res) => {
            onboarding_completed = true,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $6
-       RETURNING *`,
+       RETURNING *, is_salesperson`  // Make sure to return is_salesperson
       [businessName, ownerName, phone, address, googleReviewLink, businessId]
     );
 
     await client.query('COMMIT');
 
+    // Include isSalesperson in the response
     res.json({
       success: true,
       user: {
-        ...result.rows[0],
+        id: result.rows[0].id,
+        email: result.rows[0].email,
+        businessName: result.rows[0].business_name,
+        isSalesperson: result.rows[0].is_salesperson,
         onboarding_completed: true
       }
     });
