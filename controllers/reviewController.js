@@ -1,4 +1,4 @@
-const pool = require('../db/index');
+const {pool} = require('../db/index');
 
 exports.getReviews = async (req, res) => {
   try {
@@ -14,7 +14,7 @@ exports.getReviews = async (req, res) => {
     }
     
     query += ` ORDER BY created_at DESC`;
-
+    
     const reviews = await pool.query(query, [businessId]);
     res.json(reviews.rows);
   } catch (error) {
