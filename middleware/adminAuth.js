@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const pool = require('../db/index');
 
 module.exports = async (req, res, next) => {
   try {

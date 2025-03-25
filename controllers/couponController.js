@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const pool = require('../db/index');
 const { validateCouponCode } = require('../utils/validation');
 
 const couponController = {

@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const pool = require('../db/index');
 const transporter = require('../config/mail');
 const { formatCurrency } = require('../utils/formatters');
 

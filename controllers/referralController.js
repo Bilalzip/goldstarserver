@@ -1,4 +1,4 @@
-const pool = require('../db');
+const pool = require('../db/index');
 const { generateRandomCode } = require('../utils/helpers');
 
 exports.getReferralDashboard = async (req, res) => {

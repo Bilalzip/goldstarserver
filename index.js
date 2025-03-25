@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const db = require('./db'); // Make sure this path is correct
+const pool = require('./db/index');
 const jwt = require('jsonwebtoken');
 require('dotenv').config();
 

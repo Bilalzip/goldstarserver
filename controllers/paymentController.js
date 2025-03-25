@@ -1,5 +1,5 @@
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-const pool = require('../db');
+const pool = require('../db/index');
 
 exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;

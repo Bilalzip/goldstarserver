@@ -1,4 +1,4 @@
-const pool = require('../db');
+const pool = require('../db/index');
 
 async function updateReferralStatuses() {
   const client = await pool.connect();

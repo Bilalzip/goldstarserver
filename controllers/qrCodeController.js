@@ -1,4 +1,4 @@
-const pool = require('../config/db');
+const pool = require('../db/index');
 const qr = require('qrcode');
 
 exports.generateQrCode = async (req, res) => {
