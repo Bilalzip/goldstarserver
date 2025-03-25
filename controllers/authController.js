@@ -206,8 +206,8 @@ exports.completeOnboarding = async (req, res) => {
            onboarding_completed = true,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $6
-       RETURNING *, is_salesperson`  // Make sure to return is_salesperson
-      [businessName, ownerName, phone, address, googleReviewLink, businessId]
+       RETURNING id, email, business_name, is_salesperson, onboarding_completed`,
+      [businessName, ownerName, phone, address, googleReviewLink, businessId]  // Added comma after the SQL query
     );
 
     await client.query('COMMIT');
