@@ -241,9 +241,9 @@ exports.login = async (req, res) => {
 
     console.log(email)
 
-    // Update the query to include is_salesperson
+    // Update the query to include subscription_status
     const result = await pool.query(
-      'SELECT id, email, business_name, password, onboarding_completed, is_salesperson,  is_admin FROM businesses WHERE email = $1',
+      'SELECT id, email, business_name, password, onboarding_completed, is_salesperson, is_admin, subscription_status FROM businesses WHERE email = $1',
       [email]
     );
     
@@ -284,8 +284,8 @@ exports.login = async (req, res) => {
         businessName: business.business_name,
         isSalesperson: business.is_salesperson,
         is_admin: business.is_admin,
-        onboarding_completed: business.onboarding_completed, 
-        subscriptionStatus: business.rows[0].subscription_status
+        onboarding_completed: business.onboarding_completed,
+        subscriptionStatus: business.subscription_status
       }
     });
   } catch (error) {
