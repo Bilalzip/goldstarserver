@@ -125,7 +125,8 @@ exports.signup = async (req, res) => {
         email: result.rows[0].email,
         isSalesperson: result.rows[0].is_salesperson,
         onboarding_completed: false,
-        emailVerified: false
+        emailVerified: false, 
+        subscriptionStatus: result.rows[0].subscription_status
       }
     });
   } catch (error) {
@@ -283,7 +284,8 @@ exports.login = async (req, res) => {
         businessName: business.business_name,
         isSalesperson: business.is_salesperson,
         is_admin: business.is_admin,
-        onboarding_completed: business.onboarding_completed
+        onboarding_completed: business.onboarding_completed, 
+        subscriptionStatus: business.rows[0].subscription_status
       }
     });
   } catch (error) {
