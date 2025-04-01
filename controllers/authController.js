@@ -22,7 +22,19 @@ exports.signup = async (req, res) => {
       isSalesperson,
       referralCode
     } = req.body;
-    console.log(isSalesperson)
+
+    // Check if email already exists
+    const emailCheck = await client.query(
+      'SELECT id FROM businesses WHERE email = $1',
+      [email]
+    );
+
+    console.log("emailCheck", emailCheck)
+    
+    if (emailCheck.rows.length > 0) {
+      throw new Error('EMAIL_EXISTS');
+    }
+
     // Check if referral code exists
     let referrerId = null;
     if (referralCode) {
@@ -41,9 +53,9 @@ exports.signup = async (req, res) => {
     const result = await client.query(
       `INSERT INTO businesses (
         business_name, owner_name, email, password, phone, 
-        address, google_review_link, is_salesperson
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) 
-      RETURNING id, email, is_salesperson`,
+        address, google_review_link, is_salesperson, subscription_status
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) 
+      RETURNING id, email, is_salesperson, subscription_status`,
       [
         businessName,
         ownerName,
@@ -52,7 +64,8 @@ exports.signup = async (req, res) => {
         phone,
         address,
         googleReviewLink,
-        isSalesperson
+        isSalesperson,
+        'pending'
       ]
     );
 
@@ -85,8 +98,8 @@ exports.signup = async (req, res) => {
 
     // Send verification email
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
-    await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@reputation-rocket.com>',
+  const emailSend =  await transporter.sendMail({
+      from: '"Reputation Rocket" <noreply@thegoldstar.ca>',
       to: email,
       subject: "Verify your email address",
       html: `
@@ -105,6 +118,9 @@ exports.signup = async (req, res) => {
         <p>If you didn't create an account, please ignore this email.</p>
       `
     });
+
+
+    console.log(emailSend)
 
     await client.query('COMMIT');
 
@@ -125,12 +141,19 @@ exports.signup = async (req, res) => {
         email: result.rows[0].email,
         isSalesperson: result.rows[0].is_salesperson,
         onboarding_completed: false,
-        emailVerified: false, 
-        subscriptionStatus: result.rows[0].subscription_status
+        emailVerified: false,
+        subscriptionStatus: 'pending'
       }
     });
   } catch (error) {
     await client.query('ROLLBACK');
+    
+    if (error.message === 'EMAIL_EXISTS') {
+      return res.status(409).json({ 
+        message: 'This email is already registered. Please use a different email or login to your existing account.' 
+      });
+    }
+    
     console.error('Signup error:', error);
     res.status(500).json({ message: 'Error during signup' });
   } finally {
@@ -207,12 +230,22 @@ exports.completeOnboarding = async (req, res) => {
            onboarding_completed = true,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $6
-       RETURNING id, email, business_name, is_salesperson, onboarding_completed`,
-      [businessName, ownerName, phone, address, googleReviewLink, businessId]  // Added comma after the SQL query
+       RETURNING id, email, business_name, is_salesperson, onboarding_completed, subscription_status`,
+      [businessName, ownerName, phone, address, googleReviewLink, businessId]
     );
-
+    
     await client.query('COMMIT');
+    
 
+    console.log("user",    {
+      id: result.rows[0].id,
+      email: result.rows[0].email,
+      businessName: result.rows[0].business_name,
+      isSalesperson: result.rows[0].is_salesperson,
+      onboarding_completed: true,
+      subscriptionStatus: result.rows[0].subscription_status
+    })
+    
     // Include isSalesperson in the response
     res.json({
       success: true,
@@ -221,10 +254,11 @@ exports.completeOnboarding = async (req, res) => {
         email: result.rows[0].email,
         businessName: result.rows[0].business_name,
         isSalesperson: result.rows[0].is_salesperson,
-        onboarding_completed: true
+        onboarding_completed: true,
+        subscriptionStatus: result.rows[0].subscription_status
       }
     });
-
+  
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Complete onboarding error:', error);
@@ -248,10 +282,11 @@ exports.login = async (req, res) => {
     );
     
     const business = result.rows[0];
+    console.log("business", business)
     if (!business) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid Email or Password' });
     }
-
+    
     console.log("ad", business)
 
     console.log(" is_admin:", business.is_admin,
@@ -260,7 +295,7 @@ exports.login = async (req, res) => {
     // Verify password
     const isValidPassword = await bcrypt.compare(password, business.password);
     if (!isValidPassword) {
-      return res.status(401).json({ message: 'Invalid credentials' });
+      return res.status(401).json({ message: 'Invalid Password or Email' });
     }
 
     // Include isSalesperson in the token

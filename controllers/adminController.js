@@ -81,7 +81,7 @@ const suspendBusiness = async (req, res) => {
           updated_at = CURRENT_TIMESTAMP 
       WHERE business_id = $1
     `, [id]);
-
+    
     // Send suspension notification
     const businessResult = await client.query(
       'SELECT email, business_name FROM businesses WHERE id = $1',

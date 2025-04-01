@@ -5,29 +5,38 @@ const couponController = {
   // Validate and apply a coupon
   async validateCoupon(req, res) {
     const { code } = req.body;
+    console.log(code)
     const businessId = req.user.businessId;
-
+    
+    console.log(businessId)
+    
     try {
       // Check if coupon exists and is valid
       const couponResult = await pool.query(
         `SELECT c.*, 
           (SELECT COUNT(*) FROM coupon_redemptions WHERE coupon_id = c.id) as current_uses
          FROM coupons c 
-         WHERE c.code = $1 AND c.is_active = true 
-         AND (c.expires_at IS NULL OR c.expires_at > NOW())`,
+         WHERE c.code = $1`,  // Remove conditions temporarily to see if coupon exists at all
         [code.toUpperCase()]
       );
+      
+      console.log('Searching for coupon:', code.toUpperCase());
+      console.log('Found coupon:', couponResult.rows[0]);
 
       if (couponResult.rows.length === 0) {
         return res.status(404).json({ message: 'Invalid coupon code' });
       }
-
+      
       const coupon = couponResult.rows[0];
 
+      console.log("object", coupon)
+      
       // Check if coupon has reached max uses
       if (coupon.max_uses !== null && coupon.current_uses >= coupon.max_uses) {
         return res.status(400).json({ message: 'Coupon has reached maximum uses' });
       }
+      
+
 
       // Check if user has already used this coupon
       const redemptionCheck = await pool.query(
@@ -66,10 +75,17 @@ const couponController = {
           description: coupon.description,
           type: 'trial',
           value: coupon.value,
-          redirect: true
+          redirect: true,
+          subscriptionStatus: 'trial'
         });
       }
-
+      console.log({
+        code: coupon.code,
+        description: coupon.description,
+        type: coupon.type,
+        value: coupon.value,
+        redirect: false
+      })
       // For non-trial coupons, return the discount info
       return res.json({
         code: coupon.code,
