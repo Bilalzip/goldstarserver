@@ -22,19 +22,6 @@ exports.signup = async (req, res) => {
       isSalesperson,
       referralCode
     } = req.body;
-
-    // Check if email already exists
-    const emailCheck = await client.query(
-      'SELECT id FROM businesses WHERE email = $1',
-      [email]
-    );
-
-    console.log("emailCheck", emailCheck)
-    
-    if (emailCheck.rows.length > 0) {
-      throw new Error('EMAIL_EXISTS');
-    }
-
     // Check if referral code exists
     let referrerId = null;
     if (referralCode) {
@@ -118,9 +105,7 @@ exports.signup = async (req, res) => {
         <p>If you didn't create an account, please ignore this email.</p>
       `
     });
-
-
-    console.log(emailSend)
+    
 
     await client.query('COMMIT');
 
