@@ -86,7 +86,7 @@ exports.signup = async (req, res) => {
     // Send verification email
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
   const emailSend =  await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@thegoldstar.ca>',
+      from: '"The Gold Star" <noreply@thegoldstar.ca>',
       to: email,
       subject: "Verify your email address",
       html: `
