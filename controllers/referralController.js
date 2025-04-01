@@ -132,8 +132,8 @@ exports.recordReferralEarning = async (businessId, paymentAmount) => {
 
     if (referralResult.rows.length > 0) {
       const referralId = referralResult.rows[0].id;
-      const commissionAmount = paymentAmount * 0.20; // 20% commission
-
+      const commissionAmount = 75; // 20% commission
+      
       // Record the earning
       await client.query(
         `INSERT INTO referral_earnings (referral_id, amount, month) 
