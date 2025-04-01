@@ -414,7 +414,7 @@ exports.resendVerificationEmail = async (req, res) => {
     // Send new verification email
     const verificationUrl = `${process.env.FRONTEND_URL}/verify-email?token=${verificationToken}`;
     await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@reputation-rocket.com>',
+      from: '"The Gold Star" <noreply@thegoldstar.ca>',
       to: businessResult.rows[0].email,
       subject: "Verify your email address",
       html: `
@@ -450,7 +450,7 @@ exports.forgotPassword = async (req, res) => {
   
   try {
     const { email } = req.body;
-
+    
     // Check if business exists
     const businessResult = await client.query(
       'SELECT id FROM businesses WHERE email = $1',
@@ -487,7 +487,7 @@ exports.forgotPassword = async (req, res) => {
     // Send reset email
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
     await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@mailtrap.io>',
+      from: '"The Gold Star" <noreply@thegoldstar.ca>',
       to: email,
       subject: "Reset Your Password",
       html: `
