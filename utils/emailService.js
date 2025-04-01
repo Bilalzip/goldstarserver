@@ -14,10 +14,10 @@ const transporter = nodemailer.createTransport({
 // Email templates
 const emailTemplates = {
   verifyEmail: (verificationLink, name) => ({
-    subject: 'Verify your Reputation Rocket account',
+    subject: 'Verify your The Gold Star account',
     html: `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h1 style="color: #333; text-align: center;">Welcome to Reputation Rocket!</h1>
+        <h1 style="color: #333; text-align: center;">Welcome to The Gold Star!</h1>
         <p>Hello ${name},</p>
         <p>Thank you for signing up. Please verify your email address to get started.</p>
         <div style="text-align: center; margin: 30px 0;">
@@ -60,7 +60,7 @@ const sendEmail = async (to, template, data = {}) => {
     const templateConfig = emailTemplates[template](data.link, data.name);
 
     const info = await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@reputationrocket.com>',
+      from: '"The Gold Star" <noreply@thegoldstar.ca>',
       to,
       subject: templateConfig.subject,
       html: templateConfig.html

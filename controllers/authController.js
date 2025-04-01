@@ -90,7 +90,7 @@ exports.signup = async (req, res) => {
       to: email,
       subject: "Verify your email address",
       html: `
-        <h1>Welcome to Reputation Rocket!</h1>
+        <h1>Welcome to The Gold Star!</h1>
         <p>Please verify your email address by clicking the link below:</p>
         <a href="${verificationUrl}" style="
           background-color: #4F46E5;

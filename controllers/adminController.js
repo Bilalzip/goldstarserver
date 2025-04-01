@@ -89,12 +89,12 @@ const suspendBusiness = async (req, res) => {
     );
 
     await transporter.sendMail({
-      from: '"Reputation Rocket" <noreply@mailtrap.io>',
+      from: '"The Gold Star" <noreply@mailtrap.io>',
       to: businessResult.rows[0].email,
       subject: "Account Suspended - Action Required",
       html: `
         <h1>Account Suspended</h1>
-        <p>Your Reputation Rocket account has been suspended due to payment issues.</p>
+        <p>Your The Gold Star account has been suspended due to payment issues.</p>
         <p>Please contact support to resolve this issue.</p>
       `
     });
@@ -346,7 +346,7 @@ const sendInvoice = async (req, res) => {
 
     // Send email
     await transporter.sendMail({
-      from: process.env.MAIL_FROM || '"Reputation Rocket" <noreply@reputationrocket.com>',
+      from: process.env.MAIL_FROM || '"The Gold Star" <noreply@reputationrocket.com>',
       to: business.email,
       subject: `Invoice for ${business.business_name}`,
       html: invoiceHtml

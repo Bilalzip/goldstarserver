@@ -14,6 +14,7 @@ const { handleWebhook } = require('./controllers/paymentController');
 const bankDetailsRoutes = require('./routes/bankDetails');
 const adminRoutes = require('./routes/admin');
 const couponRoutes = require('./routes/coupon');
+const contactRoutes = require('./routes/contact')
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use('/payment', paymentRoutes);
 app.use('/bank-details', bankDetailsRoutes);
 app.use('/auth/admin', adminRoutes);
 app.use('/auth/coupons', couponRoutes);
+app.use('/contact', contactRoutes);
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
