@@ -94,7 +94,7 @@ const couponController = {
         value: coupon.value,
         redirect: false
       });
-
+    
     } catch (error) {
       console.error('Error validating coupon:', error);
       return res.status(500).json({ message: 'Server error' });

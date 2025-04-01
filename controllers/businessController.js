@@ -1,4 +1,4 @@
-const pool = require('../db/index');
+const {pool} = require('../db/index');
 
 exports.getDashboardStats = async (req, res) => {
   try {
