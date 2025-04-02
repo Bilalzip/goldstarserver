@@ -6,7 +6,7 @@ exports.sendContactEmail = async (req, res) => {
 
     await transporter.sendMail({
       from: '"The Gold Star Contact Form" <noreply@thegoldstar.ca>',
-      to: "mohdbilalpersonal@gmail.com", // Your email address
+      to: "thejulianlucic@gmail.com", // Your email address
       subject: "New Contact Form Submission",
       html: `
         <h1>New Contact Form Submission</h1>
