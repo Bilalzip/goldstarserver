@@ -5,10 +5,18 @@ exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
   const businessId = req.user.id;
 
+  console.log('=== Creating Checkout Session ===');
+  console.log('Request details:', {
+    businessId,
+    couponCode,
+    userEmail: req.user.email
+  });
+
   try {
     // If coupon code is provided, validate it
     let coupon = null;
     if (couponCode) {
+      console.log('Validating coupon code:', couponCode);
       const couponResult = await pool.query(
         'SELECT * FROM coupons WHERE code = $1 AND is_active = true',
         [couponCode]
@@ -16,10 +24,14 @@ exports.createCheckoutSession = async (req, res) => {
 
       if (couponResult.rows.length > 0) {
         coupon = couponResult.rows[0];
+        console.log('Coupon found:', coupon);
+      } else {
+        console.log('Coupon not found or inactive');
       }
     }
-
+    
     // Create Stripe session with or without coupon
+    console.log('Creating Stripe checkout session...');
     const session = await stripe.checkout.sessions.create({
       customer_email: req.user.email,
       payment_method_types: ['card'],
@@ -35,11 +47,22 @@ exports.createCheckoutSession = async (req, res) => {
         business_id: businessId,
         coupon_code: couponCode || ''
       }
+    }); 
+
+    console.log('Stripe session created successfully:', {
+      sessionId: session.id,
+      url: session.url,
+      metadata: session.metadata
     });
-    
+
+    console.log("sending session back");
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Error creating checkout session:', error);
+    console.error('Error creating checkout session:', {
+      error: error.message,
+      stack: error.stack,
+      businessId
+    });
     res.status(500).json({ 
       message: 'Error creating checkout session',
       error: error.message 
@@ -48,9 +71,14 @@ exports.createCheckoutSession = async (req, res) => {
 };
 
 exports.handleWebhook = async (req, res) => {
+  console.log('=== Webhook Received ===');
+  console.log('Webhook headers:', {
+    'stripe-signature': req.headers['stripe-signature']
+  });
+  console.log('Webhook body:', req.body);
+
   const sig = req.headers['stripe-signature'];
   let event;
-
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
@@ -58,28 +86,43 @@ exports.handleWebhook = async (req, res) => {
       process.env.STRIPE_WEBHOOK_SECRET
     );
     
-    console.log('Webhook verified - Event:', {
-      type: event.type,
-      id: event.id
+    console.log('Webhook verified successfully:', {
+      eventType: event.type,
+      eventId: event.id
     });
 
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const businessId = session.metadata.businessId;
 
-      console.log('Processing checkout session for business:', businessId);
+      console.log('=== Processing Completed Checkout Session ===');
+      console.log('Session details:', {
+        sessionId: session.id,
+        businessId: businessId,
+        customerId: session.customer,
+        subscriptionId: session.subscription,
+        paymentStatus: session.payment_status,
+        metadata: session.metadata
+      });
 
       try {
         // First check if subscription exists
+        console.log('Checking for existing subscription...');
         const existingSubscription = await pool.query(
           'SELECT * FROM subscriptions WHERE business_id = $1',
           [businessId]
         );
 
+        console.log('Existing subscription check result:', {
+          exists: existingSubscription.rows.length > 0,
+          subscription: existingSubscription.rows[0]
+        });
+
         let query;
         let values;
 
         if (existingSubscription.rows.length === 0) {
+          console.log('Creating new subscription...');
           // Insert new subscription
           query = `
             INSERT INTO subscriptions (
@@ -98,10 +141,10 @@ exports.handleWebhook = async (req, res) => {
             session.customer, 
             'active', 
             399,
-            'card' // Default payment method
+            'card'
           ];
         } else {
-          // Update existing subscription
+          console.log('Updating existing subscription...');
           query = `
             UPDATE subscriptions 
             SET stripe_subscription_id = $2,
@@ -119,16 +162,22 @@ exports.handleWebhook = async (req, res) => {
             session.customer, 
             'active', 
             399,
-            'card' // Default payment method
+            'card'
           ];
         }
 
-        console.log('Executing query:', query);
-        console.log('With values:', values);
+        console.log('Executing database query:', {
+          query: query,
+          values: values
+        });
 
         const result = await pool.query(query, values);
-        console.log('Subscription update result:', result.rows[0]);
-
+        console.log('Database operation result:', {
+          success: true,
+          affectedRows: result.rowCount,
+          subscription: result.rows[0]
+        });
+        
         // Now handle referral with detailed logging
         console.log('Checking for referral...');
         
@@ -250,7 +299,7 @@ exports.startTrial = async (req, res) => {
        WHERE id = $1`,
       [businessId]
     );
-
+    
     res.json({ message: 'Trial started successfully' });
   } catch (error) {
     console.error('Error starting trial:', error);
