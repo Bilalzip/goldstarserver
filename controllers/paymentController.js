@@ -29,11 +29,44 @@ exports.createCheckoutSession = async (req, res) => {
         console.log('Coupon not found or inactive');
       }
     }
+
+    // Create or retrieve customer
+    let customer;
+    try {
+      // Try to find existing customer
+      const customers = await stripe.customers.list({
+        email: req.user.email,
+        limit: 1
+      });
+
+      if (customers.data.length > 0) {
+        customer = customers.data[0];
+        console.log('Found existing customer:', customer.id);
+        
+        // Update customer metadata if needed
+        if (!customer.metadata.businessId) {
+          customer = await stripe.customers.update(customer.id, {
+            metadata: { businessId }
+          });
+          console.log('Updated customer metadata:', customer.metadata);
+        }
+      } else {
+        // Create new customer
+        customer = await stripe.customers.create({
+          email: req.user.email,
+          metadata: { businessId }
+        });
+        console.log('Created new customer:', customer.id);
+      }
+    } catch (error) {
+      console.error('Error handling customer:', error);
+      throw error;
+    }
     
     // Create Stripe session with or without coupon
     console.log('Creating Stripe checkout session...');
     const session = await stripe.checkout.sessions.create({
-      customer_email: req.user.email,
+      customer: customer.id,
       payment_method_types: ['card'],
       line_items: [{
         price: process.env.STRIPE_PRICE_ID,
@@ -47,15 +80,15 @@ exports.createCheckoutSession = async (req, res) => {
         business_id: businessId,
         coupon_code: couponCode || ''
       }
-    }); 
+    });
 
     console.log('Stripe session created successfully:', {
       sessionId: session.id,
       url: session.url,
-      metadata: session.metadata
+      metadata: session.metadata,
+      customerId: customer.id
     });
-
-    console.log("sending session back");
+    
     res.json({ url: session.url });
   } catch (error) {
     console.error('Error creating checkout session:', {
@@ -205,17 +238,33 @@ async function handleCheckoutSessionCompleted(session) {
 async function handleSubscriptionUpdate(subscription) {
   console.log('Processing subscription update:', {
     subscriptionId: subscription.id,
-    status: subscription.status
+    status: subscription.status,
+    customerId: subscription.customer
   });
 
   try {
+    // First get the business_id from the customer metadata
+    const customer = await stripe.customers.retrieve(subscription.customer);
+    const businessId = customer.metadata.businessId;
+
+    if (!businessId) {
+      console.error('No businessId found in customer metadata:', {
+        customerId: subscription.customer,
+        metadata: customer.metadata
+      });
+      return;
+    }
+
+    console.log('Found businessId from customer metadata:', businessId);
+
     const result = await pool.query(
       `UPDATE subscriptions 
        SET status = $1,
+           business_id = $2,
            updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_subscription_id = $2
+       WHERE stripe_subscription_id = $3
        RETURNING *`,
-      [subscription.status, subscription.id]
+      [subscription.status, businessId, subscription.id]
     );
 
     console.log('Subscription update result:', {
@@ -235,17 +284,33 @@ async function handleSubscriptionUpdate(subscription) {
 async function handleInvoicePaymentSucceeded(invoice) {
   console.log('Processing successful invoice payment:', {
     invoiceId: invoice.id,
-    subscriptionId: invoice.subscription
+    subscriptionId: invoice.subscription,
+    customerId: invoice.customer
   });
 
   try {
+    // Get the customer to find business_id
+    const customer = await stripe.customers.retrieve(invoice.customer);
+    const businessId = customer.metadata.businessId;
+
+    if (!businessId) {
+      console.error('No businessId found in customer metadata:', {
+        customerId: invoice.customer,
+        metadata: customer.metadata
+      });
+      return;
+    }
+
+    console.log('Found businessId from customer metadata:', businessId);
+
     const result = await pool.query(
       `UPDATE subscriptions 
        SET status = 'active',
+           business_id = $2,
            updated_at = CURRENT_TIMESTAMP
        WHERE stripe_subscription_id = $1
        RETURNING *`,
-      [invoice.subscription]
+      [invoice.subscription, businessId]
     );
 
     console.log('Invoice payment processing result:', {
