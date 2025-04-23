@@ -4,8 +4,6 @@ const pool = require('../db/index');
 exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
   const businessId = req.user.id;
-
-  console.log('=== Creating Checkout Session ===');
   console.log('Request details:', {
     businessId,
     couponCode,
@@ -241,28 +239,27 @@ async function handleSubscriptionUpdate(subscription) {
   });
 
   try {
-    // First get the business_id from the customer metadata
+    // Get the customer to find email
     const customer = await stripe.customers.retrieve(subscription.customer);
-    const businessId = customer.metadata.businessId;
+    const customerEmail = customer.email;
 
-    if (!businessId) {
-      console.error('No businessId found in customer metadata:', {
-        customerId: subscription.customer,
-        metadata: customer.metadata
+    if (!customerEmail) {
+      console.error('No email found for customer:', {
+        customerId: subscription.customer
       });
       return;
     }
 
-    console.log('Found businessId from customer metadata:', businessId);
-
+    console.log('Found customer email:', customerEmail);
+    
+    // Update subscription using email
     const result = await pool.query(
       `UPDATE subscriptions 
        SET status = $1,
-           business_id = $2,
            updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_subscription_id = $3
+       WHERE stripe_customer_id = $2
        RETURNING *`,
-      [subscription.status, businessId, subscription.id]
+      [subscription.status, subscription.customer]
     );
 
     console.log('Subscription update result:', {
@@ -287,28 +284,27 @@ async function handleInvoicePaymentSucceeded(invoice) {
   });
 
   try {
-    // Get the customer to find business_id
+    // Get the customer to find email
     const customer = await stripe.customers.retrieve(invoice.customer);
-    const businessId = customer.metadata.businessId;
+    const customerEmail = customer.email;
 
-    if (!businessId) {
-      console.error('No businessId found in customer metadata:', {
-        customerId: invoice.customer,
-        metadata: customer.metadata
+    if (!customerEmail) {
+      console.error('No email found for customer:', {
+        customerId: invoice.customer
       });
       return;
     }
 
-    console.log('Found businessId from customer metadata:', businessId);
+    console.log('Found customer email:', customerEmail);
 
+    // Update subscription using customer ID
     const result = await pool.query(
       `UPDATE subscriptions 
        SET status = 'active',
-           business_id = $2,
            updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_subscription_id = $1
+       WHERE stripe_customer_id = $1
        RETURNING *`,
-      [invoice.subscription, businessId]
+      [invoice.customer]
     );
 
     console.log('Invoice payment processing result:', {
