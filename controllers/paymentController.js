@@ -4,14 +4,11 @@ const pool = require('../db/index');
 exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
   const businessId = req.user.id;
-  console.log('Request details:', {
-    businessId,
-    couponCode,
-    userEmail: req.user.email
-  });
+
+  console.log("check businessId", businessId)
+  
 
   try {
-    // If coupon code is provided, validate it
     let coupon = null;
     if (couponCode) {
       console.log('Validating coupon code:', couponCode);
@@ -45,14 +42,14 @@ exports.createCheckoutSession = async (req, res) => {
         customer = await stripe.customers.update(customer.id, {
           metadata: { businessId }
         });
-        console.log('Updated customer metadata with businessId:', customer.metadata);
+      
       } else {
-        // Create new customer with businessId in metadata
+     
         customer = await stripe.customers.create({
           email: req.user.email,
           metadata: { businessId }
         });
-        console.log('Created new customer with businessId:', customer.id, customer.metadata);
+        
       }
     } catch (error) {
       console.error('Error handling customer:', error);
@@ -100,11 +97,6 @@ exports.createCheckoutSession = async (req, res) => {
 };
 
 exports.handleWebhook = async (req, res) => {
-  console.log('=== Webhook Received ===');
-  console.log('Webhook headers:', {
-    'stripe-signature': req.headers['stripe-signature']
-  });
-  console.log('Webhook body:', req.body);
 
   const sig = req.headers['stripe-signature'];
   let event;
@@ -120,8 +112,7 @@ exports.handleWebhook = async (req, res) => {
       eventType: event.type,
       eventId: event.id
     });
-
-    // Handle different event types
+    
     switch (event.type) {
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(event.data.object);
@@ -131,7 +122,6 @@ exports.handleWebhook = async (req, res) => {
       case 'customer.subscription.updated':
         await handleSubscriptionUpdate(event.data.object);
         break;
-      
       case 'invoice.payment_succeeded':
         await handleInvoicePaymentSucceeded(event.data.object);
         break;
