@@ -5,7 +5,7 @@ exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
   const businessId = req.user.id;
 
-  console.log("check businessId", businessId)
+  console.log("check businessId", req.user.id)
   
 
   try {
