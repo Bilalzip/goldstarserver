@@ -3,55 +3,30 @@ const pool = require('../db/index');
 
 exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
-  
-  if (!req.user || !req.user.businessId) {
-    console.error('No businessId found in user object:', req.user);
+  const businessId = req.user.businessId;
+
+  if (!businessId) {
     return res.status(400).json({ message: 'Business ID is required' });
   }
-  console.log("hii ",req.user)
-  const businessId = req.user.businessId;
-  console.log('Creating checkout session for business:', businessId);
 
   try {
-    // If coupon code is provided, validate it
-    let coupon = null;
-    if (couponCode) {
-      const couponResult = await pool.query(
-        'SELECT * FROM coupons WHERE code = $1 AND is_active = true',
-        [couponCode]
-      );
-      
-      if (couponResult.rows.length > 0) {
-        coupon = couponResult.rows[0];
-      }
-    }
-
     // Create or retrieve customer
     let customer;
-    try {
-      // Try to find existing customer
-      const customers = await stripe.customers.list({
-        email: req.user.email,
-        limit: 1
-      });
+    const customers = await stripe.customers.list({
+      email: req.user.email,
+      limit: 1
+    });
 
-      if (customers.data.length > 0) {
-        customer = customers.data[0];
-        
-        // Update customer metadata with businessId
-        customer = await stripe.customers.update(customer.id, {
-          metadata: { businessId }
-        });
-      } else {
-        // Create new customer with businessId in metadata
-        customer = await stripe.customers.create({
-          email: req.user.email,
-          metadata: { businessId }
-        });
-      }
-    } catch (error) {
-      console.error('Error handling customer:', error);
-      throw error;
+    if (customers.data.length > 0) {
+      customer = customers.data[0];
+      await stripe.customers.update(customer.id, {
+        metadata: { businessId }
+      });
+    } else {
+      customer = await stripe.customers.create({
+        email: req.user.email,
+        metadata: { businessId }
+      });
     }
     
     // Create Stripe session
@@ -71,46 +46,29 @@ exports.createCheckoutSession = async (req, res) => {
         coupon_code: couponCode || ''
       }
     });
-
-    console.log("session", session)
     
     res.json({ url: session.url });
   } catch (error) {
-    console.error('Error creating checkout session:', {
-      error: error.message,
-      stack: error.stack,
-      businessId
-    });
-    res.status(500).json({ 
-      message: 'Error creating checkout session',
-      error: error.message 
-    });
+    console.error('Error creating checkout session:', error);
+    res.status(500).json({ message: 'Error creating checkout session' });
   }
 };
 
 exports.handleWebhook = async (req, res) => {
-
   const sig = req.headers['stripe-signature'];
   let event;
-  
+
   try {
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-    
-    console.log('Webhook verified successfully:', {
-      eventType: event.type,
-      eventId: event.id
-    });
-    
+
     switch (event.type) {
       case 'checkout.session.completed':
         await handleCheckoutSessionCompleted(event.data.object);
         break;
-      
-      case 'customer.subscription.created':
       case 'customer.subscription.updated':
         await handleSubscriptionUpdate(event.data.object);
         break;
@@ -121,264 +79,103 @@ exports.handleWebhook = async (req, res) => {
 
     res.json({ received: true });
   } catch (err) {
-    console.error('Webhook Error:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
+    console.error('Webhook Error:', err);
+    res.status(400).send(`Webhook Error: ${err.message}`);
   }
 };
 
 async function handleCheckoutSessionCompleted(session) {
-  const businessId = session.metadata.businessId;
-  console.log('Processing checkout session for business:', businessId);
-
   try {
-    // First check if subscription exists
-    console.log('Checking for existing subscription...');
-    const existingSubscription = await pool.query(
-      'SELECT * FROM subscriptions WHERE business_id = $1',
-      [businessId]
+    const businessId = session.metadata.business_id;
+    const customerId = session.customer;
+    const subscriptionId = session.subscription;
+
+    // Create or update subscription
+    await pool.query(
+      `INSERT INTO subscriptions (
+        business_id,
+        stripe_customer_id,
+        stripe_subscription_id,
+        status,
+        amount,
+        payment_method
+      ) VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (business_id) 
+      DO UPDATE SET
+        stripe_customer_id = $2,
+        stripe_subscription_id = $3,
+        status = $4,
+        amount = $5,
+        payment_method = $6,
+        updated_at = CURRENT_TIMESTAMP`,
+      [businessId, customerId, subscriptionId, 'active', 399, 'card']
     );
 
-    console.log('Existing subscription check result:', {
-      exists: existingSubscription.rows.length > 0,
-      subscription: existingSubscription.rows[0]
-    });
-
-    let query;
-    let values;
-
-    if (existingSubscription.rows.length === 0) {
-      console.log('Creating new subscription...');
-      query = `
-        INSERT INTO subscriptions (
-          business_id,
-          stripe_subscription_id,
-          stripe_customer_id,
-          status,
-          amount,
-          payment_method
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *
-      `;
-      values = [
-        businessId, 
-        session.subscription, 
-        session.customer, 
-        'active', 
-        399,
-        'card'
-      ];
-    } else {
-      console.log('Updating existing subscription...');
-      query = `
-        UPDATE subscriptions 
-        SET stripe_subscription_id = $2,
-            stripe_customer_id = $3,
-            status = $4,
-            amount = $5,
-            payment_method = $6,
-            updated_at = CURRENT_TIMESTAMP
-        WHERE business_id = $1
-        RETURNING *
-      `;
-      values = [
-        businessId, 
-        session.subscription, 
-        session.customer, 
-        'active', 
-        399,
-        'card'
-      ];
-    }
-
-    console.log('Executing database query:', {
-      query: query,
-      values: values
-    });
-
-    const result = await pool.query(query, values);
-    console.log('Database operation result:', {
-      success: true,
-      affectedRows: result.rowCount,
-      subscription: result.rows[0]
-    });
-
-    // Handle referral logic here...
-    await handleReferral(businessId);
+    // Update business subscription status
+    await pool.query(
+      'UPDATE businesses SET subscription_status = $1 WHERE id = $2',
+      ['active', businessId]
+    );
   } catch (error) {
-    console.error('Error processing checkout session:', {
-      error: error.message,
-      stack: error.stack,
-      businessId
-    });
+    console.error('Error handling checkout session:', error);
   }
 }
 
 async function handleSubscriptionUpdate(subscription) {
-
-
-console.log("subscriptionLog", subscription)
-  
   try {
-    // Get the customer to find email
     const customer = await stripe.customers.retrieve(subscription.customer);
-    const customerEmail = customer.email;
+    const businessId = customer.metadata.businessId;
 
-    if (!customerEmail) {
-      console.error('No email found for customer:', {
-        customerId: subscription.customer
-      });
+    if (!businessId) {
+      console.error('No businessId found for customer:', subscription.customer);
       return;
     }
 
-    console.log('Found customer email:', customerEmail);
-    
-    // Update subscription using email
-    const result = await pool.query(
+    // Update subscription status
+    await pool.query(
       `UPDATE subscriptions 
        SET status = $1,
            updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_customer_id = $2
-       RETURNING *`,
-      [subscription.status, subscription.customer]
+       WHERE stripe_subscription_id = $2`,
+      [subscription.status, subscription.id]
     );
 
-    console.log('Subscription update result:', {
-      success: true,
-      affectedRows: result.rowCount,
-      subscription: result.rows[0]
-    });
+    // Update business subscription status
+    await pool.query(
+      'UPDATE businesses SET subscription_status = $1 WHERE id = $2',
+      [subscription.status, businessId]
+    );
   } catch (error) {
-    console.error('Error updating subscription:', {
-      error: error.message,
-      stack: error.stack,
-      subscriptionId: subscription.id
-    });
+    console.error('Error updating subscription:', error);
   }
 }
 
 async function handleInvoicePaymentSucceeded(invoice) {
-  console.log('Processing successful invoice payment:', {
-    invoiceId: invoice.id,
-    subscriptionId: invoice.subscription,
-    customerId: invoice.customer
-  });
-
   try {
-    // Get the customer to find email
     const customer = await stripe.customers.retrieve(invoice.customer);
-    const customerEmail = customer.email;
+    const businessId = customer.metadata.businessId;
 
-    if (!customerEmail) {
-      console.error('No email found for customer:', {
-        customerId: invoice.customer
-      });
+    if (!businessId) {
+      console.error('No businessId found for customer:', invoice.customer);
       return;
     }
 
-    console.log('Found customer email:', customerEmail);
-
-    // Update subscription using customer ID
-    const result = await pool.query(
+    // Update subscription status
+    await pool.query(
       `UPDATE subscriptions 
        SET status = 'active',
            updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_customer_id = $1
-       RETURNING *`,
-      [invoice.customer]
+       WHERE stripe_subscription_id = $1`,
+      [invoice.subscription]
     );
 
-    console.log('Invoice payment processing result:', {
-      success: true,
-      affectedRows: result.rowCount,
-      subscription: result.rows[0]
-    });
+    // Update business subscription status
+    await pool.query(
+      'UPDATE businesses SET subscription_status = $1 WHERE id = $2',
+      ['active', businessId]
+    );
   } catch (error) {
-    console.error('Error processing invoice payment:', {
-      error: error.message,
-      stack: error.stack,
-      invoiceId: invoice.id
-    });
-  }
-}
-
-async function handleReferral(businessId) {
-  console.log('Checking for referral...');
-  
-  const referralResult = await pool.query(
-    `SELECT r.referrer_id, b.business_name as referrer_name
-     FROM referrals r
-     JOIN businesses b ON b.id = r.referrer_id
-     WHERE r.referred_business_id = $1`,
-    [businessId]
-  );
-
-  console.log('Referral query result:', referralResult.rows[0]);
-
-  if (referralResult.rows[0]?.referrer_id) {
-    const referrerId = referralResult.rows[0].referrer_id;
-    const referrerName = referralResult.rows[0].referrer_name;
-    const commissionAmount = 100;
-
-    console.log('Found referral:', {
-      referrerId,
-      referrerName,
-      commissionAmount,
-      referredBusinessId: businessId
-    });
-
-    try {
-      await pool.query('BEGIN');
-
-      // Check if earning already exists
-      const existingEarning = await pool.query(
-        `SELECT id FROM referral_earnings 
-         WHERE seller_id = $1 AND business_id = $2`,
-        [referrerId, businessId]
-      );
-      
-      if (existingEarning.rows.length === 0) {
-        console.log('Creating new referral earning...');
-        
-        const earningResult = await pool.query(
-          `INSERT INTO referral_earnings (
-            seller_id,
-            business_id,
-            amount,
-            status,
-            created_at
-          ) VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-          RETURNING *`,
-          [referrerId, businessId, commissionAmount, 'pending']
-        );
-
-        console.log('Created referral earning:', earningResult.rows[0]);
-
-        const updateResult = await pool.query(
-          `UPDATE businesses 
-           SET total_referral_earnings = COALESCE(total_referral_earnings, 0) + $1
-           WHERE id = $2
-           RETURNING id, total_referral_earnings`,
-          [commissionAmount, referrerId]
-        );
-
-        console.log('Updated referrer total earnings:', updateResult.rows[0]);
-      } else {
-        console.log('Referral earning already exists for this business');
-      }
-
-      await pool.query('COMMIT');
-      console.log('Referral transaction committed successfully');
-    } catch (error) {
-      await pool.query('ROLLBACK');
-      console.error('Error processing referral:', {
-        error: error.message,
-        stack: error.stack,
-        referrerId,
-        businessId
-      });
-    }
-  } else {
-    console.log('No referral found for business:', businessId);
+    console.error('Error processing invoice payment:', error);
   }
 }
 
