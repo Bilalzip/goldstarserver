@@ -67,12 +67,15 @@ exports.handleWebhook = async (req, res) => {
 
     switch (event.type) {
       case 'checkout.session.completed':
+        console.log("checkout.session.completed")
         await handleCheckoutSessionCompleted(event.data.object);
         break;
       case 'customer.subscription.updated':
+        console.log("customer.subscription.updated")
         await handleSubscriptionUpdate(event.data.object);
         break;
       case 'invoice.payment_succeeded':
+        console.log("invoice.payment_succeeded")
         await handleInvoicePaymentSucceeded(event.data.object);
         break;
     }
