@@ -71,6 +71,8 @@ exports.createCheckoutSession = async (req, res) => {
         coupon_code: couponCode || ''
       }
     });
+
+    console.log("session", session)
     
     res.json({ url: session.url });
   } catch (error) {
