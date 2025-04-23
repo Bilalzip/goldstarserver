@@ -92,9 +92,11 @@ async function handleCheckoutSessionCompleted(session) {
     const businessId = session.metadata.business_id;
     const customerId = session.customer;
     const subscriptionId = session.subscription;
-
+    
+    console.log("businessId in session", businessId);
+    
     // Create or update subscription
-    await pool.query(
+    const subscriptionResult = await pool.query(
       `INSERT INTO subscriptions (
         business_id,
         stripe_customer_id,
@@ -110,15 +112,20 @@ async function handleCheckoutSessionCompleted(session) {
         status = $4,
         amount = $5,
         payment_method = $6,
-        updated_at = CURRENT_TIMESTAMP`,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *`,
       [businessId, customerId, subscriptionId, 'active', 399, 'card']
     );
+    
+    console.log("Subscription update result:", subscriptionResult.rows[0]);
 
     // Update business subscription status
-    await pool.query(
-      'UPDATE businesses SET subscription_status = $1 WHERE id = $2',
+    const businessResult = await pool.query(
+      'UPDATE businesses SET subscription_status = $1 WHERE id = $2 RETURNING *',
       ['active', businessId]
     );
+    
+    console.log("Business update result:", businessResult.rows[0]);
   } catch (error) {
     console.error('Error handling checkout session:', error);
   }
