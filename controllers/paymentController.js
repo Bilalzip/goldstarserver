@@ -3,15 +3,19 @@ const pool = require('../db/index');
 
 exports.createCheckoutSession = async (req, res) => {
   const { couponCode } = req.body;
-  const businessId = req.user.id;
-
-  console.log("check businessId", req.user.id)
   
+  if (!req.user || !req.user.businessId) {
+    console.error('No businessId found in user object:', req.user);
+    return res.status(400).json({ message: 'Business ID is required' });
+  }
+
+  const businessId = req.user.businessId;
+  console.log('Creating checkout session for business:', businessId);
 
   try {
+    // If coupon code is provided, validate it
     let coupon = null;
     if (couponCode) {
-      console.log('Validating coupon code:', couponCode);
       const couponResult = await pool.query(
         'SELECT * FROM coupons WHERE code = $1 AND is_active = true',
         [couponCode]
@@ -19,9 +23,6 @@ exports.createCheckoutSession = async (req, res) => {
       
       if (couponResult.rows.length > 0) {
         coupon = couponResult.rows[0];
-        console.log('Coupon found:', coupon);
-      } else {
-        console.log('Coupon not found or inactive');
       }
     }
 
@@ -36,28 +37,24 @@ exports.createCheckoutSession = async (req, res) => {
 
       if (customers.data.length > 0) {
         customer = customers.data[0];
-        console.log('Found existing customer:', customer.id);
         
-        // Always update customer metadata with businessId
+        // Update customer metadata with businessId
         customer = await stripe.customers.update(customer.id, {
           metadata: { businessId }
         });
-      
       } else {
-     
+        // Create new customer with businessId in metadata
         customer = await stripe.customers.create({
           email: req.user.email,
           metadata: { businessId }
         });
-        
       }
     } catch (error) {
       console.error('Error handling customer:', error);
       throw error;
     }
     
-    // Create Stripe session with or without coupon
-    console.log('Creating Stripe checkout session...');
+    // Create Stripe session
     const session = await stripe.checkout.sessions.create({
       customer: customer.id,
       payment_method_types: ['card'],
@@ -73,13 +70,6 @@ exports.createCheckoutSession = async (req, res) => {
         business_id: businessId,
         coupon_code: couponCode || ''
       }
-    });
-
-    console.log('Stripe session created successfully:', {
-      sessionId: session.id,
-      url: session.url,
-      metadata: session.metadata,
-      customerId: customer.id
     });
     
     res.json({ url: session.url });
