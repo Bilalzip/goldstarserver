@@ -21,7 +21,7 @@ exports.createCheckoutSession = async (req, res) => {
         'SELECT * FROM coupons WHERE code = $1 AND is_active = true',
         [couponCode]
       );
-
+      
       if (couponResult.rows.length > 0) {
         coupon = couponResult.rows[0];
         console.log('Coupon found:', coupon);
@@ -43,20 +43,18 @@ exports.createCheckoutSession = async (req, res) => {
         customer = customers.data[0];
         console.log('Found existing customer:', customer.id);
         
-        // Update customer metadata if needed
-        if (!customer.metadata.businessId) {
-          customer = await stripe.customers.update(customer.id, {
-            metadata: { businessId }
-          });
-          console.log('Updated customer metadata:', customer.metadata);
-        }
+        // Always update customer metadata with businessId
+        customer = await stripe.customers.update(customer.id, {
+          metadata: { businessId }
+        });
+        console.log('Updated customer metadata with businessId:', customer.metadata);
       } else {
-        // Create new customer
+        // Create new customer with businessId in metadata
         customer = await stripe.customers.create({
           email: req.user.email,
           metadata: { businessId }
         });
-        console.log('Created new customer:', customer.id);
+        console.log('Created new customer with businessId:', customer.id, customer.metadata);
       }
     } catch (error) {
       console.error('Error handling customer:', error);
