@@ -8,7 +8,7 @@ exports.createCheckoutSession = async (req, res) => {
     console.error('No businessId found in user object:', req.user);
     return res.status(400).json({ message: 'Business ID is required' });
   }
-
+  
   const businessId = req.user.businessId;
   console.log('Creating checkout session for business:', businessId);
 
