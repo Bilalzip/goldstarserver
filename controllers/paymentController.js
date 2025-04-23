@@ -214,12 +214,10 @@ async function handleCheckoutSessionCompleted(session) {
 }
 
 async function handleSubscriptionUpdate(subscription) {
-  console.log('Processing subscription update:', {
-    subscriptionId: subscription.id,
-    status: subscription.status,
-    customerId: subscription.customer
-  });
 
+
+console.log("subscriptionLog", subscription)
+  
   try {
     // Get the customer to find email
     const customer = await stripe.customers.retrieve(subscription.customer);
