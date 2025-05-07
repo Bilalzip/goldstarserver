@@ -76,6 +76,10 @@ exports.handleWebhook = async (req, res) => {
         console.log("customer.subscription.updated");
         await handleSubscriptionUpdate(event.data.object);
         break;
+      case "customer.subscription.deleted":
+        console.log("customer.subscription.deleted");
+        await handleSubscriptionDeleted(event.data.object);
+        break;
       case "invoice.payment_succeeded":
         console.log("invoice.payment_succeeded");
         await handleInvoicePaymentSucceeded(event.data.object);
@@ -89,6 +93,40 @@ exports.handleWebhook = async (req, res) => {
   }
 };
 
+async function handleSubscriptionDeleted(subscription) {
+  try {
+    console.log(`Handling deleted subscription: ${subscription.id}`);
+
+    const customer = await stripe.customers.retrieve(subscription.customer);
+    const businessId = customer.metadata.businessId;
+
+    if (!businessId) {
+      return;
+    }
+
+    await pool.query(
+      `UPDATE subscriptions 
+       SET status = 'cancelled',
+           updated_at = CURRENT_TIMESTAMP,
+           cancelled_at = COALESCE(cancelled_at, CURRENT_TIMESTAMP),
+           ended_at = CURRENT_TIMESTAMP
+       WHERE stripe_subscription_id = $1`,
+      [subscription.id]
+    );
+
+    await pool.query(
+      "UPDATE businesses SET subscription_status = 'cancelled' WHERE id = $2",
+      [businessId]
+    );
+
+    console.log(
+      `Successfully marked subscription as cancelled for business ${businessId}`
+    );
+  } catch (error) {
+    console.error("Error handling deleted subscription:", error);
+  }
+}
+
 async function handleCheckoutSessionCompleted(session) {
   try {
     const businessId = session.metadata.business_id;
@@ -97,16 +135,12 @@ async function handleCheckoutSessionCompleted(session) {
 
     console.log("businessId in session", businessId);
 
-    // Retrieve the subscription details from Stripe
     const subscription = await stripe.subscriptions.retrieve(subscriptionId);
 
-    // Get the actual price charged (in cents)
     const amount = subscription.items.data[0].price.unit_amount;
 
-    // Get the current_period_end from the subscription
     const currentPeriodEnd = new Date(subscription.current_period_end * 1000);
 
-    // Get the payment method details
     let cardLast4 = null;
     let cardBrand = null;
 
@@ -117,10 +151,9 @@ async function handleCheckoutSessionCompleted(session) {
 
       if (paymentMethod.type === "card" && paymentMethod.card) {
         cardLast4 = paymentMethod.card.last4;
-        cardBrand = paymentMethod.card.brand; // Returns 'visa', 'mastercard', etc.
+        cardBrand = paymentMethod.card.brand;
       }
     } else if (subscription.default_source) {
-      // Fallback to retrieve from customer's default source
       const customer = await stripe.customers.retrieve(customerId, {
         expand: ["default_source"],
       });
@@ -196,19 +229,37 @@ async function handleSubscriptionUpdate(subscription) {
       return;
     }
 
+    let status = subscription.status;
+
+    if (
+      subscription.cancel_at_period_end === true &&
+      subscription.status === "active"
+    ) {
+      status = "cancelling";
+      console.log(
+        `Subscription ${subscription.id} is now set to cancel at period end`
+      );
+    }
+
+    console.log(
+      `Updating subscription status to ${status} for business ${businessId}`
+    );
+
     // Update subscription status
     await pool.query(
       `UPDATE subscriptions 
        SET status = $1,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE stripe_subscription_id = $2`,
-      [subscription.status, subscription.id]
+           updated_at = CURRENT_TIMESTAMP,
+           cancel_at_period_end = $2,
+           cancelled_at = CASE WHEN $2 = true AND cancelled_at IS NULL THEN CURRENT_TIMESTAMP ELSE cancelled_at END
+       WHERE stripe_subscription_id = $3`,
+      [status, subscription.cancel_at_period_end, subscription.id]
     );
 
     // Update business subscription status
     await pool.query(
       "UPDATE businesses SET subscription_status = $1 WHERE id = $2",
-      [subscription.status, businessId]
+      [status, businessId]
     );
   } catch (error) {
     console.error("Error updating subscription:", error);
@@ -388,6 +439,7 @@ exports.checkReviewLimit = async (req, res, next) => {
 exports.createUpdateSession = async (req, res) => {
   try {
     const businessId = req.user.businessId;
+    console.log(`Creating Stripe portal session for business: ${businessId}`);
 
     // Get the subscription details
     const result = await pool.query(
@@ -399,15 +451,20 @@ exports.createUpdateSession = async (req, res) => {
       return res.status(404).json({ message: "No active subscription found" });
     }
 
-    // Create Stripe billing portal session
+    // Create Stripe billing portal session with configuration
     const session = await stripe.billingPortal.sessions.create({
       customer: result.rows[0].stripe_customer_id,
-      return_url: `${process.env.FRONTEND_URL}/dashboard/settings`,
+      return_url: `${process.env.FRONTEND_URL}/dashboard/settings?tab=subscription`,
+      // Configure what the customer can do in the portal
+      configuration: process.env.STRIPE_PORTAL_CONFIG_ID || undefined,
     });
 
+    console.log(`Created Stripe portal session: ${session.id}`);
     res.json({ url: session.url });
   } catch (error) {
     console.error("Error creating update session:", error);
-    res.status(500).json({ message: "Failed to create update session" });
+    res
+      .status(500)
+      .json({ message: `Failed to create update session: ${error.message}` });
   }
 };
