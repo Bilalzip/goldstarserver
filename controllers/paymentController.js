@@ -272,6 +272,8 @@ exports.getSubscriptionStatus = async (req, res) => {
         s.status as subscription_status,
         s.stripe_subscription_id,
         s.current_period_end as subscription_ends_at,
+        s.card_last4,
+        s.card_brand,
         b.trial_reviews_remaining,
         b.total_referral_earnings
        FROM businesses b
@@ -288,6 +290,17 @@ exports.getSubscriptionStatus = async (req, res) => {
       trialReviewsLeft: data.trial_reviews_remaining || 0,
       subscriptionEndsAt: data.subscription_ends_at,
       totalReferralEarnings: data.total_referral_earnings || 0,
+      paymentMethod: {
+        cardLast4: data.card_last4 || null,
+        cardBrand: data.card_brand || null,
+        displayName:
+          data.card_brand && data.card_last4
+            ? `${
+                data.card_brand.charAt(0).toUpperCase() +
+                data.card_brand.slice(1)
+              } ending in ${data.card_last4}`
+            : null,
+      },
     });
   } catch (error) {
     console.error("Error fetching subscription status:", error);
