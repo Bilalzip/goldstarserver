@@ -189,11 +189,6 @@ exports.getPublicBusinessDetails = async (req, res) => {
         [businessId]
       );
 
-      await pool.query(
-        "UPDATE users SET subscription_status = 'pending' WHERE business_id = $1",
-        [businessId]
-      );
-
       // Update the status in our local result
       business.subscription_status = "pending";
     }

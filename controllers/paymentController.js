@@ -119,11 +119,6 @@ async function handleSubscriptionDeleted(subscription) {
       [businessId]
     );
 
-    await pool.query(
-      "UPDATE users SET subscription_status = 'pending' WHERE business_id = $1",
-      [businessId]
-    );
-
     console.log(
       `Successfully marked subscription as cancelled for business ${businessId}`
     );
@@ -218,11 +213,6 @@ async function handleCheckoutSessionCompleted(session) {
       ["active", businessId]
     );
 
-    await pool.query(
-      "UPDATE users SET subscription_status = 'active' WHERE business_id = $1",
-      [businessId]
-    );
-
     console.log("Business update result:", businessResult.rows[0]);
   } catch (error) {
     console.error("Error handling checkout session:", error);
@@ -275,7 +265,7 @@ async function handleSubscriptionUpdate(subscription) {
     // Update user subscription status if needed
     if (status === "cancelling") {
       await pool.query(
-        "UPDATE users SET subscription_status = 'cancelling' WHERE business_id = $1",
+        "UPDATE businesses SET subscription_status = 'cancelling' WHERE business_id = $1",
         [businessId]
       );
     }
@@ -309,11 +299,6 @@ async function handleInvoicePaymentSucceeded(invoice) {
       ["active", businessId]
     );
 
-    // Update user subscription status
-    await pool.query(
-      "UPDATE users SET subscription_status = 'active' WHERE business_id = $1",
-      [businessId]
-    );
   } catch (error) {
     console.error("Error processing invoice payment:", error);
   }
@@ -437,11 +422,6 @@ exports.cancelSubscription = async (req, res) => {
       [businessId]
     );
 
-    // Update user subscription status to cancelling
-    await pool.query(
-      "UPDATE users SET subscription_status = 'cancelling' WHERE business_id = $1",
-      [businessId]
-    );
 
     console.log(
       `Successfully cancelled subscription for business ${businessId}`
