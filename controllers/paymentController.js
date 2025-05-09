@@ -119,6 +119,11 @@ async function handleSubscriptionDeleted(subscription) {
       [businessId]
     );
 
+    await pool.query(
+      "UPDATE users SET subscription_status = 'pending' WHERE business_id = $1",
+      [businessId]
+    );
+
     console.log(
       `Successfully marked subscription as cancelled for business ${businessId}`
     );
@@ -213,6 +218,11 @@ async function handleCheckoutSessionCompleted(session) {
       ["active", businessId]
     );
 
+    await pool.query(
+      "UPDATE users SET subscription_status = 'active' WHERE business_id = $1",
+      [businessId]
+    );
+
     console.log("Business update result:", businessResult.rows[0]);
   } catch (error) {
     console.error("Error handling checkout session:", error);
@@ -261,6 +271,14 @@ async function handleSubscriptionUpdate(subscription) {
       "UPDATE businesses SET subscription_status = $1 WHERE id = $2",
       [status, businessId]
     );
+
+    // Update user subscription status if needed
+    if (status === "cancelling") {
+      await pool.query(
+        "UPDATE users SET subscription_status = 'cancelling' WHERE business_id = $1",
+        [businessId]
+      );
+    }
   } catch (error) {
     console.error("Error updating subscription:", error);
   }
@@ -289,6 +307,12 @@ async function handleInvoicePaymentSucceeded(invoice) {
     await pool.query(
       "UPDATE businesses SET subscription_status = $1 WHERE id = $2",
       ["active", businessId]
+    );
+
+    // Update user subscription status
+    await pool.query(
+      "UPDATE users SET subscription_status = 'active' WHERE business_id = $1",
+      [businessId]
     );
   } catch (error) {
     console.error("Error processing invoice payment:", error);
@@ -346,6 +370,11 @@ exports.getSubscriptionStatus = async (req, res) => {
       status: data.subscription_status || "trial",
       isSubscribed: data.subscription_status === "active",
       trialReviewsLeft: data.trial_reviews_remaining || 0,
+      trialEndsAt: data.trial_started_at
+        ? new Date(
+            new Date(data.trial_started_at).getTime() + 14 * 24 * 60 * 60 * 1000
+          ).toISOString()
+        : null,
       subscriptionEndsAt: data.subscription_ends_at,
       totalReferralEarnings: data.total_referral_earnings || 0,
       paymentMethod: {
@@ -402,9 +431,15 @@ exports.cancelSubscription = async (req, res) => {
       [businessId]
     );
 
-    // Also update the businesses table
+    // Update business and user subscription status
     await pool.query(
       "UPDATE businesses SET subscription_status = 'cancelling' WHERE id = $1",
+      [businessId]
+    );
+
+    // Update user subscription status to cancelling
+    await pool.query(
+      "UPDATE users SET subscription_status = 'cancelling' WHERE business_id = $1",
       [businessId]
     );
 
@@ -417,6 +452,66 @@ exports.cancelSubscription = async (req, res) => {
     res.status(500).json({
       message: `Failed to cancel subscription: ${error.message}`,
     });
+  }
+};
+
+/**
+ * Middleware to check if user has active subscription access
+ * This allows both "active" and "cancelling" subscriptions
+ */
+exports.checkSubscriptionAccess = async (req, res, next) => {
+  try {
+    const businessId = req.user.businessId;
+
+    // Get subscription status and trial info
+    const result = await pool.query(
+      `SELECT 
+        b.subscription_status,
+        b.trial_reviews_remaining,
+        b.trial_started_at,
+        s.current_period_end
+       FROM businesses b
+       LEFT JOIN subscriptions s ON s.business_id = b.id
+       WHERE b.id = $1`,
+      [businessId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Business not found" });
+    }
+
+    const data = result.rows[0];
+    const now = new Date();
+
+    // CASE 1: Active subscription OR cancelling but still in paid period
+    if (
+      data.subscription_status === "active" ||
+      (data.subscription_status === "cancelling" &&
+        data.current_period_end &&
+        new Date(data.current_period_end) > now)
+    ) {
+      // User has full access - paid subscription is active
+      return next();
+    }
+
+    // CASE 2: Trial period access
+    if (
+      data.subscription_status === "trial" &&
+      data.trial_reviews_remaining > 0
+    ) {
+      // User has trial access
+      return next();
+    }
+
+    // CASE 3: Subscription fully ended or trial ended
+    return res.status(403).json({
+      message:
+        "Your subscription has ended. Please renew your subscription to continue using premium features.",
+      subscriptionEnded: true,
+    });
+  } catch (error) {
+    console.error("Error checking subscription access:", error);
+    res.status(500).json({ message: "Failed to check subscription access" });
   }
 };
 
@@ -437,7 +532,10 @@ exports.checkReviewLimit = async (req, res, next) => {
 
     const data = result.rows[0];
 
-    if (data.subscription_status === "active") {
+    if (
+      data.subscription_status === "active" ||
+      data.subscription_status === "cancelling"
+    ) {
       return next(); // Subscribed users have unlimited reviews
     }
 
@@ -445,6 +543,7 @@ exports.checkReviewLimit = async (req, res, next) => {
       return res.status(403).json({
         message:
           "Free trial limit reached. Please upgrade to continue collecting reviews.",
+        subscriptionEnded: true,
       });
     }
 
