@@ -115,7 +115,7 @@ async function handleSubscriptionDeleted(subscription) {
     );
 
     await pool.query(
-      "UPDATE businesses SET subscription_status = 'cancelled' WHERE id = $2",
+      "UPDATE businesses SET subscription_status = 'cancelled' WHERE id = $1",
       [businessId]
     );
 
@@ -317,6 +317,7 @@ exports.startTrial = async (req, res) => {
 exports.getSubscriptionStatus = async (req, res) => {
   try {
     const businessId = req.user.businessId;
+    console.log(`Fetching subscription status for business: ${businessId}`);
 
     const result = await pool.query(
       `SELECT 
@@ -333,7 +334,13 @@ exports.getSubscriptionStatus = async (req, res) => {
       [businessId]
     );
 
+    if (result.rows.length === 0) {
+      console.error(`No business found with ID: ${businessId}`);
+      return res.status(404).json({ message: "Business not found" });
+    }
+
     const data = result.rows[0];
+    console.log(`Retrieved subscription data:`, data);
 
     res.json({
       status: data.subscription_status || "trial",
@@ -362,19 +369,27 @@ exports.getSubscriptionStatus = async (req, res) => {
 exports.cancelSubscription = async (req, res) => {
   try {
     const businessId = req.user.businessId;
+    console.log(`Processing direct cancellation for business: ${businessId}`);
 
-    // Get Stripe subscription ID
+    // Get Stripe subscription ID without filtering by status
     const result = await pool.query(
-      "SELECT stripe_subscription_id FROM subscriptions WHERE business_id = $1 AND status = $2",
-      [businessId, "active"]
+      "SELECT stripe_subscription_id FROM subscriptions WHERE business_id = $1",
+      [businessId]
     );
 
     if (!result.rows[0]?.stripe_subscription_id) {
-      return res.status(404).json({ message: "No active subscription found" });
+      console.error(`No subscription ID found for business ${businessId}`);
+      return res.status(404).json({
+        message:
+          "No active subscription found. Please contact support if you believe this is an error.",
+      });
     }
 
+    const subscriptionId = result.rows[0].stripe_subscription_id;
+    console.log(`Cancelling Stripe subscription: ${subscriptionId}`);
+
     // Cancel subscription in Stripe at period end
-    await stripe.subscriptions.update(result.rows[0].stripe_subscription_id, {
+    await stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
 
@@ -387,10 +402,21 @@ exports.cancelSubscription = async (req, res) => {
       [businessId]
     );
 
+    // Also update the businesses table
+    await pool.query(
+      "UPDATE businesses SET subscription_status = 'cancelling' WHERE id = $1",
+      [businessId]
+    );
+
+    console.log(
+      `Successfully cancelled subscription for business ${businessId}`
+    );
     res.json({ message: "Subscription cancelled successfully" });
   } catch (error) {
     console.error("Error cancelling subscription:", error);
-    res.status(500).json({ message: "Failed to cancel subscription" });
+    res.status(500).json({
+      message: `Failed to cancel subscription: ${error.message}`,
+    });
   }
 };
 
@@ -435,36 +461,50 @@ exports.checkReviewLimit = async (req, res, next) => {
   }
 };
 
-// Add this new function to handle payment method updates
+// Improved createUpdateSession function
 exports.createUpdateSession = async (req, res) => {
   try {
     const businessId = req.user.businessId;
     console.log(`Creating Stripe portal session for business: ${businessId}`);
 
-    // Get the subscription details
+    // Get customer ID without filtering by status
     const result = await pool.query(
       "SELECT stripe_subscription_id, stripe_customer_id FROM subscriptions WHERE business_id = $1",
       [businessId]
     );
 
     if (!result.rows[0]?.stripe_customer_id) {
-      return res.status(404).json({ message: "No active subscription found" });
+      console.error(`No customer ID found for business ${businessId}`);
+
+      // Do a more comprehensive check to see what's in the database
+      const allSubs = await pool.query(
+        "SELECT * FROM subscriptions WHERE business_id = $1",
+        [businessId]
+      );
+      console.log("All subscription records:", allSubs.rows);
+
+      return res.status(404).json({
+        message:
+          "No subscription found. Please contact support if you believe this is an error.",
+      });
     }
+
+    const customerId = result.rows[0].stripe_customer_id;
+    console.log(`Creating portal session for customer: ${customerId}`);
 
     // Create Stripe billing portal session with configuration
     const session = await stripe.billingPortal.sessions.create({
-      customer: result.rows[0].stripe_customer_id,
+      customer: customerId,
       return_url: `${process.env.FRONTEND_URL}/dashboard/settings?tab=subscription`,
-      // Configure what the customer can do in the portal
       configuration: process.env.STRIPE_PORTAL_CONFIG_ID || undefined,
     });
 
-    console.log(`Created Stripe portal session: ${session.id}`);
+    console.log(`Created Stripe portal session successfully: ${session.id}`);
     res.json({ url: session.url });
   } catch (error) {
-    console.error("Error creating update session:", error);
+    console.error("Error details:", error);
     res
       .status(500)
-      .json({ message: `Failed to create update session: ${error.message}` });
+      .json({ message: `Failed to access Stripe portal: ${error.message}` });
   }
 };
