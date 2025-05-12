@@ -27,13 +27,16 @@ router.post("/reset-password/:token", resetPassword);
 // Add a new route to get current user data
 router.get("/me", authMiddleware, (req, res) => {
   res.json({
-    id: req.user.businessId,
-    email: req.user.email,
-    businessName: req.user.businessName,
-    isSalesperson: req.user.isSalesperson,
-    isAdmin: req.user.isAdmin,
-    subscriptionStatus: req.user.subscriptionStatus,
-    onboarding_completed: req.user.onboarding_completed,
+    success: true,
+    user: {
+      id: req.user.businessId,
+      email: req.user.email,
+      businessName: req.user.businessName,
+      isSalesperson: req.user.isSalesperson,
+      isAdmin: req.user.isAdmin,
+      subscriptionStatus: req.user.subscriptionStatus,
+      onboarding_completed: req.user.onboarding_completed,
+    },
   });
 });
 
