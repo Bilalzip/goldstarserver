@@ -33,6 +33,7 @@ router.get("/me", authMiddleware, (req, res) => {
     isSalesperson: req.user.isSalesperson,
     isAdmin: req.user.isAdmin,
     subscriptionStatus: req.user.subscriptionStatus,
+    onboarding_completed: req.user.onboarding_completed,
   });
 });
 
