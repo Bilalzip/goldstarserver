@@ -15,7 +15,7 @@ module.exports = async (req, res, next) => {
 
     // Get business details from database
     const result = await pool.query(
-      "SELECT id, email, business_name, is_salesperson, is_admin, subscription_status FROM businesses WHERE id = $1",
+      "SELECT id, email, business_name, is_salesperson, is_admin, subscription_status, onboarding_completed FROM businesses WHERE id = $1",
       [decoded.businessId]
     );
 
