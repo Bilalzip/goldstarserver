@@ -47,6 +47,7 @@ exports.createCheckoutSession = async (req, res) => {
         business_id: businessId,
         coupon_code: couponCode || "",
       },
+      allow_promotion_codes: true,
     });
 
     res.json({ url: session.url });
@@ -298,7 +299,6 @@ async function handleInvoicePaymentSucceeded(invoice) {
       "UPDATE businesses SET subscription_status = $1 WHERE id = $2",
       ["active", businessId]
     );
-
   } catch (error) {
     console.error("Error processing invoice payment:", error);
   }
@@ -421,7 +421,6 @@ exports.cancelSubscription = async (req, res) => {
       "UPDATE businesses SET subscription_status = 'cancelling' WHERE id = $1",
       [businessId]
     );
-
 
     console.log(
       `Successfully cancelled subscription for business ${businessId}`
