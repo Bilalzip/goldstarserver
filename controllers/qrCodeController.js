@@ -105,7 +105,7 @@ exports.getReviewByUrlId = async (req, res) => {
 
     // Find the business associated with this URL ID
     const qrResult = await pool.query(
-      `SELECT qc.business_id, b.business_name 
+      `SELECT qc.business_id, b.business_name , b.google_review_link
        FROM qr_codes qc
        JOIN businesses b ON b.id = qc.business_id
        WHERE qc.url_id = $1`,
