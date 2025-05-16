@@ -122,7 +122,7 @@ exports.getReviewByUrlId = async (req, res) => {
     res.json({
       businessId,
       businessName: qrResult.rows[0].business_name,
-      // Add any other data needed for the review page
+      googleReviewLink: qrResult.rows[0].google_review_link,
     });
   } catch (error) {
     console.error("Error fetching review page:", error);
